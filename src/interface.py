@@ -2,38 +2,45 @@
 #picamera works with packages but will give errors but will work on pi 
 #live preview in future 
 
-#camera outline 
-import picamera2 
-
-camera = picamera2 
-camera.resolution = (660, 480) #check resolution 
-camera.capture("image.jpg")
-print(f"take picture")
-camera.close()
-
-
-#button outline 
-import GPIO as GPIO
 import time
+import requests   #ask abhi why it doesn't like it and if its with the packages 
+import pigpio
 import picamera2
+import os
 
-BUTTON_PIN = 2 #have to look at pin on raspberry 
-GPIO.setmode(GPIO.BCM)
-GPIO.setup(BUTTON_PIN, GPIO.IN, pull_up_down = GPIO.PUD_UP)
+class CameraInterface:
+    def __init__(self, resolution = (640, 480)):
+        self.camera = picamera2.PiCamera2()
+        self.camera.resolution = resolution
 
-camera = picamera2
-camera.resolution = (660, 480) #have to recheck resolution 
+ #need to see if this is how were gonna do it        
+    def capture_image(self):   
+        image_path = f"captured_{time}.jpg"
+        self.camera.capture(image_path)
+        print(f"Image saved as '{image_path}'")
+        return image_path
 
-def capture_image():
-    filename = "capture image.jpg"
-    camera.capture(filename)
-    print(f"Image saves as filename")
-    print("Press button to get image")
-try:
-    while True:
-        if GPIO.input(BUTTON_PIN) == GPIO.LOW: 
-            capture_image()
-            time.sleep(0.5)  # see what time in seconds 
-except KeyboardInterrupt:
-    GPIO.cleanup()
-    camera.close()
+    def close(self):
+        """Closes the camera."""
+        self.camera.close()
+
+class ButtonInterface:
+#got to see if we need the debounce time function or just time
+    def __init__(self, pin, callback): #debounce_time=0.2):
+        self.pi = pigpio.pi()
+        self.pin = pin
+        #self.debounce_time = debounce_time 
+        self.pi.set_mode(self.pin, pigpio.INPUT)
+        self.pi.set_pull_up_down(self.pin, pigpio.PUD_UP)
+        self.pi.callback(self.pin, pigpio.FALLING_EDGE, self._button_pressed)
+
+        self.callback = callback
+
+    def _button_pressed(self, gpio, level, tick):
+        current_time = time.time()
+        if current_time - self.last_press > self.time:
+            self.last_press = current_time
+            self.callback()
+
+    def close(self):
+        self.pi.stop()

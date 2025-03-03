@@ -1,18 +1,18 @@
 #camera interface connecting to API 
 
 import time
-#import requests  have to ask Abhi if we will use this 
-import GPIO as GPIO
+import requests  #have to ask Abhi if we will use this 
+import pigpio
 import picamera2
 import os
-from PIL import image #have to ask abhi if i really need this package 
+ 
 
 BUTTON_PIN = 2  #gotta look to see what pin on raspberry pi 
-API_URL = 1 #ask abhi for url
+API_URL = https://api.ranga-family.com
 
 # Setup GPIO
-GPIO.setmode(GPIO.BCM)
-GPIO.setup(BUTTON_PIN, GPIO.IN, pull_up_down=GPIO.PUD_UP)
+pigpio.setmode(pigpio.BCM)
+pigpio.setup(BUTTON_PIN, pigpio.IN, pull_up_down = pigpio.PUD_UP)
 
 # Initialize PiCamera2
 camera = picamera2.PiCamera2()
@@ -37,9 +37,23 @@ print("button to capture and send an image")
 
 try:
     while True:
-        if GPIO.input(BUTTON_PIN) == GPIO.LOW: 
+        if pigpio.input(BUTTON_PIN) == pigpio.LOW: 
             capture_and_send()
             time.sleep(0.5) 
 except KeyboardInterrupt:
-    GPIO.cleanup()
+    pigpio.cleanup()
     camera.close()
+
+class ImageUploader:
+    def __init__(self, api_url, api_key = None):
+        self.api_url = api_url
+        self.headers = {"Authorization": f"{api_key}"} if api_key else {} #see if we use a key 
+
+    def upload_image(self, image_path):
+        data = {"device_id": "RaspberryPi_001", "time": time}
+        with open(image_path, "bb") as image_file:
+            files = {"file": image_file}
+            response = requests.post(self.api_url, headers=self.headers, files=files, data=data)
+        
+        print("API Response:", response.text)
+        return response.status_code
