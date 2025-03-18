@@ -1,9 +1,10 @@
 #buttons and camera 
 #picamera works with packages but will give errors but will work on pi 
-#live preview in future 
+#live preview in future and start looking for it live feed 
+#flask websocket look into for live feed 
 
 import time
-import requests   #ask abhi why it doesn't like it and if its with the packages 
+import requests   
 import pigpio
 import picamera2
 import os
@@ -13,7 +14,6 @@ class CameraInterface:
         self.camera = picamera2.PiCamera2()
         self.camera.resolution = resolution
 
- #need to see if this is how were gonna do it        
     def capture_image(self):   
         image_path = f"captured_{time}.jpg"
         self.camera.capture(image_path)
@@ -25,11 +25,10 @@ class CameraInterface:
         self.camera.close()
 
 class ButtonInterface:
-#got to see if we need the debounce time function or just time
-    def __init__(self, pin, callback): #debounce_time=0.2):
+    def __init__(self, pin, callback, debounce_time = 0.2):
         self.pi = pigpio.pi()
         self.pin = pin
-        #self.debounce_time = debounce_time 
+        self.debounce_time = debounce_time 
         self.pi.set_mode(self.pin, pigpio.INPUT)
         self.pi.set_pull_up_down(self.pin, pigpio.PUD_UP)
         self.pi.callback(self.pin, pigpio.FALLING_EDGE, self._button_pressed)
