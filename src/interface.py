@@ -9,7 +9,6 @@ from picamera2.encoders import H264Encoder
 from picamera2.outputs import FfmpegOutput
 
 from datetime import datetime
-
 from typing import Tuple
 
 class CameraInterface:
@@ -17,7 +16,7 @@ class CameraInterface:
         self.__camera: Picamera2 = Picamera2()
         self.__video_config = self.__camera.create_video_configuration( main={ "size": resolution, "format": "RGB888"}, controls={ 'FrameRate': video_framerate } )
         self.__output = FfmpegOutput( f'rtsp://{ rtsp_stream_url }', audio=False )
-        self.__video_encoder = H264Encoder( repeat=True, iperiod=30, framerate=video_framerate )
+        self.__video_encoder = H264Encoder( repeat=True, iperiod=video_framerate, framerate=video_framerate )
         self.__camera.configure( self.__video_config )
 
     def capture_image( self, image_path: str = f'./captured_images/{ datetime.now() }.jpg' ) -> str:
@@ -35,21 +34,35 @@ class CameraInterface:
         self.__camera.close()
 
 class ButtonInterface:
-    def __init__(self, pin, callback, debounce_time = 0.2):
-        self.pi = pigpio.pi()
-        self.pin = pin
-        self.debounce_time = debounce_time
-        self.pi.set_mode(self.pin, pigpio.INPUT)
-        self.pi.set_pull_up_down(self.pin, pigpio.PUD_UP)
-        self.pi.callback(self.pin, pigpio.FALLING_EDGE, self._button_pressed)
+    def __init__( self, left_button_pin, right_button_pin, debounce_time = 0.2 ):
+        self.__pi = pigpio.pi()
+        self.__left_button_pin = left_button_pin
+        self.__right_button_pin = right_button_pin
+        self.__debounce_time = debounce_time
 
-        self.callback = callback
+    # TODO: Implement actual button logic here. For now, just print the button press event.
+    def __left_button_callback( self ) -> bool:
+        if self.__debounce( self.__left_button_pin ):
+            print( "Left button pressed" )
+            return True
+        return False
 
-    def _button_pressed(self, gpio, level, tick):
-        current_time = time.time()
-        if current_time - self.last_press > self.time:
-            self.last_press = current_time
-            self.callback()
+    # TODO: Implement actual button logic here. For now, just print the button press event.
+    def __right_button_callback( self ) -> bool:
+        if self.__debounce( self.__left_button_pin ):
+            print( "Right button pressed" )
+            return True
+        return False
 
-    def close(self):
-        self.pi.stop()
+    def start( self ):
+        self.__pi.set_mode( self.__left_button_pin, pigpio.INPUT )
+        self.__pi.set_mode( self.__right_button_pin, pigpio.INPUT )
+        self.__pi.callback( self.__left_button_pin, pigpio.FALLING_EDGE, self.__left_button_callback )
+        self.__pi.callback( self.__right_button_pin, pigpio.FALLING_EDGE, self.__right_button_callback )
+
+    def __debounce( self, button_pin: int ) -> bool:
+        """Debounces the button input."""
+        return self.__pi.wait_for_edge( button_pin, pigpio.FALLING_EDGE, wait_timeout = int( self.__debounce_time * 1000 ) )
+
+    def stop( self ):
+        self.__pi.stop()
