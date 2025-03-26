@@ -15,7 +15,7 @@ class CameraInterface:
     def __init__( self, rtsp_stream_url: str, resolution: Tuple[ int, int ] = ( 640, 480 ), video_framerate: int = 30 ):
         self.__camera: Picamera2 = Picamera2()
         self.__video_config = self.__camera.create_video_configuration( main={ "size": resolution, "format": "RGB888"}, controls={ 'FrameRate': video_framerate } )
-        self.__output = FfmpegOutput( f'rtsp://{ rtsp_stream_url }', audio=False )
+        self.__output = FfmpegOutput( f'rtsp://{ rtsp_stream_url.strip( 'rtsp://' ) }', audio=False )
         self.__video_encoder = H264Encoder( repeat=True, iperiod=video_framerate, framerate=video_framerate )
         self.__camera.configure( self.__video_config )
 
