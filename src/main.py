@@ -2,6 +2,7 @@
 from flask import Flask, Response, request, jsonify
 
 from os import getenv, path
+from atexit import register as exit_handler
 from datetime import datetime
 from typing import Tuple, Dict
 
@@ -39,10 +40,15 @@ def capture() -> Response:
 
     return jsonify( { "uri": f'file://{ absolute_image_path }', "image_timestamp": captured_time } )
 
+def on_exit() -> None:
+    print( 'Closing camera and button interface...' )
+    camera.stop()
+    button.stop()
+
 def main() -> None:
+    exit_handler( on_exit() )
     webhook.run( host=video_resolution, port=video_framerate )
     camera.start()
-
     button.start()
 
 if __name__ == '__main__':

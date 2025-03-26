@@ -29,7 +29,7 @@ class CameraInterface:
         self.__camera.start_recording( encoder=self.__video_encoder, output=self.__output )
         return self.__output.output_filename
 
-    def close(self):
+    def stop(self):
         """Closes the camera."""
         self.__camera.close()
 
