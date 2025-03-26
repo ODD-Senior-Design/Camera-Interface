@@ -1,4 +1,3 @@
-# Imports
 from flask import Flask, Response, request, jsonify
 
 from os import getenv, path
@@ -24,11 +23,16 @@ webhook: Flask = Flask( getenv( 'WEBHOOK_NAME', 'Interface API' ) )
 bind_address: str = getenv( 'BIND_ADDRESS', '0.0.0.0' )
 bind_port: int = int( getenv( 'BIND_PORT', '3000' ) )
 
-camera = CameraInterface( f'rtsp://{ api_url }/stream', video_resolution, video_framerate )
+camera = CameraInterface( video_stream_url, video_resolution, video_framerate )
 button = ButtonInterface( left_button_pin, right_button_pin, debounce_time )
 
 @webhook.route( '/capture', methods=[ 'POST' ] )
 def capture() -> Response:
+    """Captures an image from the camera and returns the image path and timestamp.
+
+    Expects a JSON payload with a dictionary of IDs. These IDs are used to construct the image filename.
+    Returns a JSON response containing the URI of the captured image and the timestamp.
+    """
     ids: Dict[ str, str ] = request.get_json()
     captured_time = datetime.now().strftime( datetime_format )
     joined_ids = '_'.join( ids.values() )
@@ -41,13 +45,21 @@ def capture() -> Response:
     return jsonify( { "uri": f'file://{ absolute_image_path }', "image_timestamp": captured_time } )
 
 def on_exit() -> None:
+    """Cleanup function to be executed on exit.
+
+    Stops the camera and button interfaces.
+    """
     print( 'Closing camera and button interface...' )
     camera.stop()
     button.stop()
 
 def main() -> None:
-    exit_handler( on_exit() )
-    webhook.run( host=video_resolution, port=video_framerate )
+    """Main function to start the application.
+
+    Registers an exit handler, starts the Flask webhook, and initializes the camera and button interfaces.
+    """
+    exit_handler( on_exit )
+    webhook.run( host=bind_address, port=bind_port )
     camera.start()
     button.start()
 
