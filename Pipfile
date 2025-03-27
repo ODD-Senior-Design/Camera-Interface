@@ -7,7 +7,8 @@ name = "pypi"
 flask = "*"
 pigpio = "*"
 pillow = "*"
-picamera2 = "*"
+opencv-python = "*"
+opencv-contrib-python = "*"
 
 [dev-packages]
 

@@ -1,59 +1,58 @@
 import pigpio
-
-from picamera2 import Picamera2
-from picamera2.encoders import H264Encoder
-from picamera2.outputs import FfmpegOutput
+import cv2
+from numpy import ndarray
+import threading
+# from picamera2 import Picamera2
+# from picamera2.encoders import H264Encoder
+# from picamera2.outputs import FfmpegOutput
 
 from datetime import datetime
-from typing import Tuple
+from typing import Tuple, Union, Optional
 
-#* NOTE: Change to use opencv once we have the converter assembled and verified
 class CameraInterface:
-    """Provides an interface to control the camera, capture images, and record video.
 
-    This class handles camera configuration, image capture, and video recording using the Picamera2 library.
-    It provides methods to start and stop recording, as well as capture still images.
-    """
+    def __init__( self, rtsp_stream_url: str, resolution: Tuple[ int, int ] = ( 640, 480 ), video_framerate: int = 30, camera_device: Union[ str, int ] = 0, stream_thread_timeout: float = 10 ) -> None:
+        self.__camera: cv2 = cv2.VideoCapture( camera_device, cv2.CAPDSHOW )
+        if not self.__camera.isOpened():
+            raise ValueError( f"Failed to open camera '{ camera_device }'" )
 
-    def __init__( self, rtsp_stream_url: str, resolution: Tuple[ int, int ] = ( 640, 480 ), video_framerate: int = 30 ):
-        """Initializes the CameraInterface with specified settings.
+        self.__camera.set( cv2.CAP_PROP_FRAME_WIDTH, resolution[ 0 ] )
+        self.__camera.set( cv2.CAP_PROP_FRAME_HEIGHT, resolution[ 1 ] )
+        self.__camera.set( cv2.CAP_PROP_FPS, video_framerate )
 
-        Args:
-            rtsp_stream_url (str): The URL for the RTSP stream. should be in the format 'rtsp://username:password@ip_address:port/path'.
-            resolution (Tuple[int, int]): The desired video resolution (width, height). Defaults to (640, 480).
-            video_framerate (int): The desired video framerate. Defaults to 30.
-        """
-        self.__camera: Picamera2 = Picamera2()
-        self.__video_config = self.__camera.create_video_configuration( main={ "size": resolution, "format": "RGB888"}, controls={ 'FrameRate': video_framerate } )
-        self.__output = FfmpegOutput( f'{ rtsp_stream_url }', audio=False )
-        self.__video_encoder = H264Encoder( repeat=True, iperiod=video_framerate, framerate=video_framerate )
-        self.__camera.configure( self.__video_config )
+        self.__last_frame: Optional[ ndarray ] = None
+        self.__stream_thread = threading.Thread( target = self.__stream_thread_handler )
+        self.__stream_thread_timeout = stream_thread_timeout
 
-    def capture_image( self, image_path: str = f'./captured_images/{ datetime.now() }.jpg' ) -> str:
-        """Captures an image from the camera and saves it to the specified path.
+    def capture_image( self, image_path: str = f'./captured_images/{ datetime.now() }.jpg' ) -> Optional[ str ]:
+        if not self.__last_frame:
+            print( 'Please start camera first' )
+            return None
 
-        Args:
-            image_path (str): The path where the image should be saved. Defaults to './captured_images/{current timestamp}.jpg'.
-
-        Returns:
-            str: The path where the image was saved.
-        """
-        self.__camera.capture_file( image_path )
-        print( f"Image saved as '{ image_path }'" )
+        img = cv2.cvtColor( self.__last_frame, cv2.COLOR_BGR2RGB )
+        error = cv2.imwrite( image_path, img )
+        if not error:
+            print( f"Failed to save image at '{ image_path }'" )
+            return None
         return image_path
 
-    def start( self ) -> str:
-        """Starts recording video to the specified RTSP stream.
+    def get_last_frame( self ) -> Optional[ ndarray ]:
+        return self.__last_frame
 
-        Returns:
-            str: The filename of the output video file.
-        """
-        self.__camera.start_recording( encoder=self.__video_encoder, output=self.__output )
-        return self.__output.output_filename
+    def __stream_thread_handler( self ) -> None:
+        valid, frame = self.__camera.read()
+        while valid and self.__camera.isOpened():
+            self.__last_frame = frame
+            valid, frame = self.__camera.read()
+
+        self.__last_frame = None
+
+    def start( self ) -> str:
+        self.__stream_thread.start()
 
     def stop( self ):
-        """Stops recording and releases camera resources."""
-        self.__camera.close()
+        self.__camera.release()
+        self.__stream_thread.join( timeout=self.__stream_thread_timeout )
 
 class ButtonInterface:
     """Provides an interface to interact with physical buttons.
