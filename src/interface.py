@@ -1,17 +1,15 @@
 import pigpio
 import cv2
-from numpy import ndarray
+
 import threading
-# from picamera2 import Picamera2
-# from picamera2.encoders import H264Encoder
-# from picamera2.outputs import FfmpegOutput
+from numpy import ndarray
 
 from datetime import datetime
 from typing import Tuple, Union, Optional
 
 class CameraInterface:
 
-    def __init__( self, rtsp_stream_url: str, resolution: Tuple[ int, int ] = ( 640, 480 ), video_framerate: int = 30, camera_device: Union[ str, int ] = 0, stream_thread_timeout: float = 10 ) -> None:
+    def __init__( self, resolution: Tuple[ int, int ] = ( 640, 480 ), video_framerate: int = 30, camera_device: Union[ str, int ] = 0, stream_thread_timeout: float = 10 ) -> None:
         self.__camera: cv2 = cv2.VideoCapture( camera_device, cv2.CAPDSHOW )
         if not self.__camera.isOpened():
             raise ValueError( f"Failed to open camera '{ camera_device }'" )
@@ -20,8 +18,11 @@ class CameraInterface:
         self.__camera.set( cv2.CAP_PROP_FRAME_HEIGHT, resolution[ 1 ] )
         self.__camera.set( cv2.CAP_PROP_FPS, video_framerate )
 
+        self.in_use = self.__camera.isOpened()
+
         self.__last_frame: Optional[ ndarray ] = None
         self.__stream_thread = threading.Thread( target = self.__stream_thread_handler )
+        self.__reading_frame = threading.Event()
         self.__stream_thread_timeout = stream_thread_timeout
 
     def capture_image( self, image_path: str = f'./captured_images/{ datetime.now() }.jpg' ) -> Optional[ str ]:
@@ -30,25 +31,33 @@ class CameraInterface:
             return None
 
         img = cv2.cvtColor( self.__last_frame, cv2.COLOR_BGR2RGB )
-        error = cv2.imwrite( image_path, img )
-        if not error:
+        valid = cv2.imwrite( image_path, img )
+        if not valid:
             print( f"Failed to save image at '{ image_path }'" )
             return None
+
         return image_path
 
     def get_last_frame( self ) -> Optional[ ndarray ]:
-        return self.__last_frame
+        self.__reading_frame.set()
+        frame = self.__last_frame()
+        self.__reading_frame.clear()
+        return frame
+    
+    def as_jpg_bytes( self, img: ndarray ) -> bytes:
+        return cv2.imencode( '.jpg', img )[1].tobytes()
 
-    def __stream_thread_handler( self ) -> None:
+    def __stream_thread_handler( self, pause: threading.Event ) -> None:
         valid, frame = self.__camera.read()
         while valid and self.__camera.isOpened():
-            self.__last_frame = frame
-            valid, frame = self.__camera.read()
+            if not pause.is_set():
+                self.__last_frame = frame
+                valid, frame = self.__camera.read()
 
         self.__last_frame = None
 
     def start( self ) -> str:
-        self.__stream_thread.start()
+        self.__stream_thread.start( self.__reading_frame )
 
     def stop( self ):
         self.__camera.release()
@@ -72,6 +81,7 @@ class ButtonInterface:
         self.__left_button_pin = left_button_pin
         self.__right_button_pin = right_button_pin
         self.__debounce_time = debounce_time
+        self.in_use = False
 
     def __debounce( self, button_pin: int ) -> bool:
         """Debounces the specified button pin.
@@ -114,7 +124,9 @@ class ButtonInterface:
         self.__pi.set_mode( self.__right_button_pin, pigpio.INPUT )
         self.__pi.callback( self.__left_button_pin, pigpio.FALLING_EDGE, self.__left_button_callback )
         self.__pi.callback( self.__right_button_pin, pigpio.FALLING_EDGE, self.__right_button_callback )
+        self.in_use = True
 
     def stop( self ):
         """Stops listening for button presses and releases pigpio resources."""
         self.__pi.stop()
+        self.in_use = False

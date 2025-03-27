@@ -9,6 +9,7 @@ pigpio = "*"
 pillow = "*"
 opencv-python = "*"
 opencv-contrib-python = "*"
+flask-socketio = "*"
 
 [dev-packages]
 
