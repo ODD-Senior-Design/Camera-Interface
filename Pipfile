@@ -10,6 +10,10 @@ pillow = "*"
 opencv-python = "*"
 opencv-contrib-python = "*"
 flask-socketio = "*"
+pygrabber = "*"
+flask-cors = "*"
+python-dotenv = "*"
+websockets = "*"
 
 [dev-packages]
 

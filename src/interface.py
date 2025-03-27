@@ -3,27 +3,30 @@ import cv2
 
 import threading
 from numpy import ndarray
+from base64 import b64encode
 
 from datetime import datetime
 from typing import Tuple, Union, Optional
 
 class CameraInterface:
 
-    def __init__( self, resolution: Tuple[ int, int ] = ( 640, 480 ), video_framerate: int = 30, camera_device: Union[ str, int ] = 0, stream_thread_timeout: float = 10 ) -> None:
-        self.__camera: cv2 = cv2.VideoCapture( camera_device, cv2.CAPDSHOW )
+    def __init__( self, resolution: Tuple[ int, int ] = ( 640, 480 ), video_framerate: int = 30, camera_device: Union[ str, int ] = 0, camera_manual_focus_value: int = -1 ) -> None:
+        self.__camera: cv2 = cv2.VideoCapture( camera_device, cv2.CAP_DSHOW )
         if not self.__camera.isOpened():
             raise ValueError( f"Failed to open camera '{ camera_device }'" )
 
         self.__camera.set( cv2.CAP_PROP_FRAME_WIDTH, resolution[ 0 ] )
         self.__camera.set( cv2.CAP_PROP_FRAME_HEIGHT, resolution[ 1 ] )
         self.__camera.set( cv2.CAP_PROP_FPS, video_framerate )
+        self.__camera.set( cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc( *'MJPG' ) )
+        self.__camera.set( cv2.CAP_PROP_AUTOFOCUS, 1 if camera_manual_focus_value == -1 else 0 )
+        if camera_manual_focus_value != -1:
+            self.__camera.set( cv2.CAP_PROP_FOCUS, camera_manual_focus_value )
+        self.__camera.set( cv2.CAP_PROP_AUTO_EXPOSURE, 0.25 )
 
-        self.in_use = self.__camera.isOpened()
+        self.streaming = False
 
         self.__last_frame: Optional[ ndarray ] = None
-        self.__stream_thread = threading.Thread( target = self.__stream_thread_handler )
-        self.__reading_frame = threading.Event()
-        self.__stream_thread_timeout = stream_thread_timeout
 
     def capture_image( self, image_path: str = f'./captured_images/{ datetime.now() }.jpg' ) -> Optional[ str ]:
         if not self.__last_frame:
@@ -39,29 +42,21 @@ class CameraInterface:
         return image_path
 
     def get_last_frame( self ) -> Optional[ ndarray ]:
-        self.__reading_frame.set()
-        frame = self.__last_frame()
-        self.__reading_frame.clear()
-        return frame
-    
-    def as_jpg_bytes( self, img: ndarray ) -> bytes:
-        return cv2.imencode( '.jpg', img )[1].tobytes()
-
-    def __stream_thread_handler( self, pause: threading.Event ) -> None:
         valid, frame = self.__camera.read()
-        while valid and self.__camera.isOpened():
-            if not pause.is_set():
-                self.__last_frame = frame
-                valid, frame = self.__camera.read()
+        if not valid:
+            print( 'Failed to capture image' )
+            return None
+        return frame
 
-        self.__last_frame = None
-
+    def as_b64_str( self, img: ndarray ) -> str:
+        return f'data:image/jepg;base64,{ b64encode( cv2.imencode( '.jpg', img )[1] ).decode( 'utf-8' ) }'
     def start( self ) -> str:
-        self.__stream_thread.start( self.__reading_frame )
+        self.streaming = True
 
     def stop( self ):
         self.__camera.release()
-        self.__stream_thread.join( timeout=self.__stream_thread_timeout )
+        # if self.__stream_thread.is_alive():
+        #     self.__stream_thread.join( timeout=self.__stream_thread_timeout )
 
 class ButtonInterface:
     """Provides an interface to interact with physical buttons.
