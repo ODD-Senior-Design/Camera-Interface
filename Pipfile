@@ -6,7 +6,6 @@ name = "pypi"
 [packages]
 flask = "*"
 pigpio = "*"
-requests = "*"
 pillow = "*"
 picamera2 = "*"
 

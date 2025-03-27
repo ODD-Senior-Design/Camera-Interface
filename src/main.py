@@ -17,7 +17,7 @@ video_framerate: int = int( getenv( 'VIDEO_FRAMERATE', '30' ) )
 
 left_button_pin = int( getenv( 'LEFT_BUTTON_PIN', '18' ) )
 right_button_pin = int( getenv( 'RIGHT_BUTTON_PIN', '23' ) )
-debounce_time = int( getenv( 'DEBOUNCE_TIME', '0.2' ) )
+debounce_time = float( getenv( 'DEBOUNCE_TIME', '0.2' ) )
 
 webhook: Flask = Flask( getenv( 'WEBHOOK_NAME', 'Interface API' ) )
 bind_address: str = getenv( 'BIND_ADDRESS', '0.0.0.0' )
@@ -25,6 +25,14 @@ bind_port: int = int( getenv( 'BIND_PORT', '3000' ) )
 
 camera = CameraInterface( video_stream_url, video_resolution, video_framerate )
 button = ButtonInterface( left_button_pin, right_button_pin, debounce_time )
+
+@webhook.route( '/stream', methods=[ 'GET' ] )
+def get_stream_url() -> Response:
+    """Returns the RTSP stream URL for the camera.
+
+    Returns a JSON response containing the RTSP stream URL.
+    """
+    return jsonify( { 'stream_url': video_stream_url } )
 
 @webhook.route( '/capture', methods=[ 'POST' ] )
 def capture() -> Response:
