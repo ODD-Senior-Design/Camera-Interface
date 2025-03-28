@@ -48,13 +48,14 @@ def on_connect() -> None:
 def send_frames() -> None:
     camera.start()
     last_frame = camera.get_last_frame()
+    last_frame_time = datetime.now()
     while last_frame is not None:
         frame_payload = camera.as_b64_str( last_frame )
         stream_ws.sleep(0)
         stream_ws.emit( 'message', { "frame" : frame_payload }, namespace='/stream' )
         last_frame = camera.get_last_frame()
         current_frame_time = datetime.now()
-        if debug: int( f'Frame timing: { current_frame_time - last_frame_time }' )
+        if debug: print( f'Frame timing: { current_frame_time - last_frame_time }' )
         last_frame_time = current_frame_time
 
 @webhook.route( '/capture', methods=[ 'POST' ] )
@@ -67,7 +68,7 @@ def capture() -> Response:
     ids: Dict[ str, str ] = request.get_json()
     captured_time = datetime.now().strftime( datetime_format )
     joined_ids = '_'.join( ids.values() )
-    image_path = f"{ images_save_dir }/{ joined_ids }{ '_' if joined_ids != '' else '' }{ captured_time }.jpg"
+    image_path = f"{ images_save_dir }/{ joined_ids }.jpg"
 
     if not camera.streaming:
         abort( 500, 'Camera is not available. Please check physical connection and if stream is running.' )

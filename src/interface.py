@@ -1,7 +1,7 @@
 import pigpio
 import cv2
 
-import threading
+from pathlib import Path
 from numpy import ndarray
 from base64 import b64encode
 
@@ -26,15 +26,14 @@ class CameraInterface:
 
         self.streaming = False
 
-        self.__last_frame: Optional[ ndarray ] = None
-
-    def capture_image( self, image_path: str = f'./captured_images/{ datetime.now() }.jpg' ) -> Optional[ str ]:
-        if not self.__last_frame:
+    def capture_image( self, image_path: str = f'./captured_images/{ datetime.now().ctime() }.jpg' ) -> Optional[ str ]:
+        frame = self.get_last_frame()
+        if frame is None:
             print( 'Please start camera first' )
             return None
 
-        img = cv2.cvtColor( self.__last_frame, cv2.COLOR_BGR2RGB )
-        valid = cv2.imwrite( image_path, img )
+        Path( image_path ).parent.mkdir( parents=True, exist_ok=True )
+        valid = cv2.imwrite( image_path, frame )
         if not valid:
             print( f"Failed to save image at '{ image_path }'" )
             return None
