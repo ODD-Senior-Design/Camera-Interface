@@ -11,7 +11,7 @@ from typing import Tuple, Union, Optional
 class CameraInterface:
 
     def __init__( self, resolution: Tuple[ int, int ] = ( 640, 480 ), video_framerate: int = 30, camera_device: Union[ str, int ] = 0, camera_manual_focus_value: int = -1 ) -> None:
-        self.__camera: cv2 = cv2.VideoCapture( camera_device, cv2.CAP_DSHOW )
+        self.__camera = cv2.VideoCapture( camera_device )
         if not self.__camera.isOpened():
             raise ValueError( f"Failed to open camera '{ camera_device }'" )
 

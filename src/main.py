@@ -2,10 +2,6 @@ from flask import Flask, Response, request, jsonify, abort
 from flask_cors import CORS
 from flask_socketio import SocketIO
 
-import asyncio
-import contextlib
-import websockets as ws
-
 from dotenv import load_dotenv
 from os import getenv, path
 from atexit import register as exit_handler
@@ -40,13 +36,8 @@ websocket_port: int = int( getenv( 'WEBSOCKET_PORT', '3333' ) )
 camera = CameraInterface( video_resolution, video_framerate, camera_device )
 button = ButtonInterface( left_button_pin, right_button_pin, debounce_time )
 
-@stream_ws.on( 'connect', namespace='/stream' )
-def on_connect() -> None:
-    print( 'Websocket client connected' )
-    stream_ws.start_background_task( send_frames )
-    
+
 def send_frames() -> None:
-    camera.start()
     last_frame = camera.get_last_frame()
     last_frame_time = datetime.now()
     while last_frame is not None:
@@ -57,6 +48,17 @@ def send_frames() -> None:
         current_frame_time = datetime.now()
         if debug: print( f'Frame timing: { current_frame_time - last_frame_time }' )
         last_frame_time = current_frame_time
+
+@stream_ws.on( 'connect', namespace='/stream' )
+def on_connect() -> None:
+    print( 'Websocket client connected' )
+    camera.start()
+    stream_ws.start_background_task( send_frames )
+
+@stream_ws.on( 'disconnect', namespace='/stream' )
+def on_disconnect() -> None:
+    print( 'Websocket client disconnected' )
+    camera.stop()
 
 @webhook.route( '/capture', methods=[ 'POST' ] )
 def capture() -> Response:
@@ -98,7 +100,10 @@ def main() -> None:
     print( f"Using camera: '{ camera_device }' " )
     if path.exists( '/sys/firmware/devicetree/base/model' ):
         button.start()
+        print( 'Started button interface...')
     stream_ws.run( app=webhook, host=bind_address, port=bind_port, debug=debug )
+    print( 'Started webhook and websocket connection...')
+    print( f'Using camera: { camera_device }' )
     #webhook.run( host=bind_address, port=bind_port, debug=debug )
 
 if __name__ == '__main__':

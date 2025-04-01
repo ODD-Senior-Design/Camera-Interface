@@ -14,6 +14,7 @@ pygrabber = "*"
 flask-cors = "*"
 python-dotenv = "*"
 websockets = "*"
+gunicorn = "*"
 
 [dev-packages]
 
