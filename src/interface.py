@@ -9,24 +9,50 @@ from datetime import datetime
 from typing import Tuple, Union, Optional
 
 class CameraInterface:
+    """Provides an interface to interact with a camera.
+
+    This class handles camera initialization, image capturing, and frame retrieval.
+    It uses OpenCV to interact with the camera hardware.
+    """
 
     def __init__( self, resolution: Tuple[ int, int ] = ( 640, 480 ), video_framerate: int = 30, camera_device: Union[ str, int ] = 0, camera_manual_focus_value: int = -1 ) -> None:
-        self.__camera = cv2.VideoCapture( camera_device )
-        if not self.__camera.isOpened():
-            raise ValueError( f"Failed to open camera '{ camera_device }'" )
+        """Initializes the CameraInterface with the specified parameters.
 
-        self.__camera.set( cv2.CAP_PROP_FRAME_WIDTH, resolution[ 0 ] )
-        self.__camera.set( cv2.CAP_PROP_FRAME_HEIGHT, resolution[ 1 ] )
-        self.__camera.set( cv2.CAP_PROP_FPS, video_framerate )
+        Args:
+            resolution (Tuple[int, int]): The desired camera resolution. Defaults to (640, 480).
+            video_framerate (int): The desired camera framerate. Defaults to 30.
+            camera_device (Union[str, int]): The camera device identifier. Defaults to 0.
+            camera_manual_focus_value (int): The manual focus value. Defaults to -1 (autofocus).
+        """
+        self.__camera_device = camera_device
+        self.__resolution = resolution
+        self.__video_framerate = video_framerate
+        self.__camera_manual_focus_value = camera_manual_focus_value
+
+        self.__camera = cv2.VideoCapture( self.__camera_device )
+        if not self.__camera.isOpened():
+            raise ValueError( f"Failed to open camera '{ self.__camera_device }'" )
+
+        self.__camera.set( cv2.CAP_PROP_FRAME_WIDTH, self.__resolution[ 0 ] )
+        self.__camera.set( cv2.CAP_PROP_FRAME_HEIGHT, self.__resolution[ 1 ] )
+        self.__camera.set( cv2.CAP_PROP_FPS, self.__video_framerate )
         self.__camera.set( cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc( *'MJPG' ) )
-        self.__camera.set( cv2.CAP_PROP_AUTOFOCUS, 1 if camera_manual_focus_value == -1 else 0 )
-        if camera_manual_focus_value != -1:
+        self.__camera.set( cv2.CAP_PROP_AUTOFOCUS, 1 if self.__camera_manual_focus_value == -1 else 0 )
+        if self.__camera_manual_focus_value != -1:
             self.__camera.set( cv2.CAP_PROP_FOCUS, camera_manual_focus_value )
         self.__camera.set( cv2.CAP_PROP_AUTO_EXPOSURE, 0.25 )
 
         self.streaming = False
 
-    def capture_image( self, image_path: str = f'./captured_images/{ datetime.now().ctime() }.jpg' ) -> Optional[ str ]:
+    def capture_image( self, image_path: str = f'./captured_images/{ datetime.now().ctime() }.jpg' ) -> Tuple[ Optional[ str ], Optional[ str ] ]:
+        """Captures an image from the camera and saves it to the specified path.
+
+        Args:
+            image_path (str): The path to save the captured image. Defaults to './captured_images/{current_time}.jpg'.
+
+        Returns:
+            Optional[str]: The path to the saved image if successful, None otherwise.
+        """
         frame = self.get_last_frame()
         if frame is None:
             print( 'Please start camera first' )
@@ -36,11 +62,16 @@ class CameraInterface:
         valid = cv2.imwrite( image_path, frame )
         if not valid:
             print( f"Failed to save image at '{ image_path }'" )
-            return None
+            return None, None
 
-        return image_path
+        return image_path, frame
 
     def get_last_frame( self ) -> Optional[ ndarray ]:
+        """Retrieves the last frame captured by the camera.
+
+        Returns:
+            Optional[ndarray]: The last captured frame as a NumPy array if successful, None otherwise.
+        """
         valid, frame = self.__camera.read()
         if not valid:
             print( 'Failed to capture image' )
@@ -48,11 +79,27 @@ class CameraInterface:
         return frame
 
     def as_b64_str( self, img: ndarray ) -> str:
+        """Encodes the given image as a base64 string.
+
+        Args:
+            img (ndarray): The image to encode.
+
+        Returns:
+            str: The base64 encoded image string.
+        """
         return f'data:image/jepg;base64,{ b64encode( cv2.imencode( '.jpg', img )[1] ).decode( 'utf-8' ) }'
     def start( self ) -> str:
+        """Starts the camera stream.
+
+        Returns:
+            str: An empty string.
+        """
+        if not self.__camera.isOpened():
+            self.__init__( camera_device=self.__camera_device, resolution=self.__resolution, video_framerate=self.__video_framerate, camera_manual_focus_value=self.__camera_manual_focus_value )
         self.streaming = True
 
     def stop( self ):
+        """Stops the camera stream and releases camera resources."""
         self.__camera.release()
         # if self.__stream_thread.is_alive():
         #     self.__stream_thread.join( timeout=self.__stream_thread_timeout )
