@@ -108,6 +108,7 @@ def on_exit() -> None:
     """
     print( 'Closing camera and button interface if in use...' )
     if camera.streaming:
+        camera_live.clear()
         camera.stop()
     if button.in_use:
         button.stop()
@@ -118,7 +119,7 @@ def main() -> None:
     Loads environment variables, registers the exit handler, starts the button interface if available,
     and runs the Flask webhook and websocket.
     """
-    load_dotenv()
+    load_dotenv( './.env' )
     exit_handler( on_exit )
     print( f"Using camera: '{ camera_device }' " )
     if path.exists( '/sys/firmware/devicetree/base/model' ):
