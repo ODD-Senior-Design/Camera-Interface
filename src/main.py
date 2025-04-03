@@ -17,19 +17,19 @@ api_url = getenv( 'API_URL', 'http://localhost:5000' )
 datetime_format = getenv( 'DATETIME_FORMAT', '%Y-%m-%dT%H:%M:%S' )
 
 images_save_dir: str = getenv( 'IMAGES_SAVE_DIRECTORY', './captured_images' )
-camera_device: int = int( getenv( 'CAMERA_DEVICE', 0 ) )
+camera_device: int = int( getenv( 'CAMERA_DEVICE', '0' ) )
 video_resolution: Tuple[ int, int ] = tuple( map( int, getenv( 'VIDEO_RESOLUTION', '640x480' ).split( 'x' ) ) )
-video_framerate: int = int( getenv( 'VIDEO_FRAMERATE', 30 ) )
-focus: int = int( getenv( "CAMERA_FOCUS_AMOUNT", -1 ) )
+video_framerate: int = int( getenv( 'VIDEO_FRAMERATE', '30' ) )
+focus: int = int( getenv( "CAMERA_FOCUS_AMOUNT", '-1' ) )
 
-left_button_pin = int( getenv( 'LEFT_BUTTON_PIN', 18 ) )
-right_button_pin = int( getenv( 'RIGHT_BUTTON_PIN', 23 ) )
-debounce_time = float( getenv( 'DEBOUNCE_TIME', 0.2 ) )
+left_button_pin = int( getenv( 'LEFT_BUTTON_PIN', '18' ) )
+right_button_pin = int( getenv( 'RIGHT_BUTTON_PIN', '23' ) )
+debounce_time = float( getenv( 'DEBOUNCE_TIME', '0.2' ) )
 
 webhook: Flask = Flask( getenv( 'WEBHOOK_NAME', 'Interface Webhook' ) )
 CORS( webhook, origins='*' )
 bind_address: str = getenv( 'BIND_ADDRESS', '0.0.0.0' )
-bind_port: int = int( getenv( 'BIND_PORT', 3000 ) )
+bind_port: int = int( getenv( 'BIND_PORT', '3000' ) )
 
 stream_ws: SocketIO = SocketIO( webhook, cors_allowed_origins='*' )
 camera_live = Event()
@@ -113,7 +113,7 @@ def on_exit() -> None:
     if button.in_use:
         button.stop()
 
-def main() -> None:
+def main() -> Flask:
     """Main function to initialize and run the application.
 
     Loads environment variables, registers the exit handler, starts the button interface if available,
@@ -121,13 +121,16 @@ def main() -> None:
     """
     load_dotenv( './.env' )
     exit_handler( on_exit )
-    print( f"Using camera: '{ camera_device }' " )
     if path.exists( '/sys/firmware/devicetree/base/model' ):
+        print( 'Starting button interface...')
         button.start()
-        print( 'Started button interface...')
-    stream_ws.run( app=webhook, host=bind_address, port=bind_port, debug=debug )
-    print( 'Started webhook and websocket connection...')
     print( f'Using camera: { camera_device }' )
+    print( 'Starting webhook and websocket connection...')
+    if not debug:
+        return webhook
+    stream_ws.run( app=webhook, host=bind_address, port=bind_port, debug=debug )
 
 if __name__ == '__main__':
+    print( 'Running python file, debug flag is automatically set...' )
+    debug=True
     main()
