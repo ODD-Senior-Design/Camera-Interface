@@ -1,0 +1,25 @@
+services:
+  camera-interface:
+    image: eliteabhi/camera-interface:latest
+    container_name: camera-interface
+    restart: always
+    environment:
+      API_URL: http://localhost:5000
+      DATETIME_FORMAT: "%Y-%m-%dT%H:%M:%S"
+      IMAGES_SAVE_DIRECTORY: ./captured_images
+      VIDEO_RESOLUTION: 640x480
+      VIDEO_FRAMERATE: "30"
+      LEFT_BUTTON_PIN: "18"
+      RIGHT_BUTTON_PIN: "23"
+      DEBOUNCE_TIME: "0.2"
+      WEBHOOK_NAME: Interface API
+      GUNICORN_WORKER_CLASS: eventlet
+      GUNICORN_NUM_WORKERS: "1"
+      BIND_ADDRESS: 127.0.0.1
+      BIND_PORT: "3000"
+      GUNICORN_LOG_LEVEL: info
+      GUNICORN_KEEPALIVE: "5"
+      GUNICORN_TIMEOUT: "30"
+    ports:
+      - "3000:3000"
+
