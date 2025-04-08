@@ -15,6 +15,8 @@ flask-cors = "*"
 python-dotenv = "*"
 websockets = "*"
 gunicorn = "*"
+eventlet = "*"
+gunicorn-color = "*"
 
 [dev-packages]
 
