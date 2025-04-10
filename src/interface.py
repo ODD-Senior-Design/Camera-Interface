@@ -15,7 +15,7 @@ class CameraInterface:
     and provides methods for capturing images, retrieving frames, and encoding images.
     """
 
-    def __init__(self, resolution: Tuple[int, int] = (640, 480), video_framerate: int = 30, camera_device: Union[str, int] = 0, camera_manual_focus_value: int = -1) -> None:
+    def __init__( self, resolution: Tuple[int, int] = (640, 480), video_framerate: int = 30, camera_device: Union[str, int] = 0, camera_manual_focus_value: int = -1 ) -> None:
         """Initializes the camera interface with given parameters.
 
         Args:
@@ -33,8 +33,8 @@ class CameraInterface:
         if not self.__camera.isOpened():
             raise ValueError( f"Failed to open camera '{ self.__camera_device }'" )
 
-        self.__camera.set( cv2.CAP_PROP_FRAME_WIDTH, self.__resolution[ 0 ] )
-        self.__camera.set( cv2.CAP_PROP_FRAME_HEIGHT, self.__resolution[ 1 ] )
+        self.__camera.set( cv2.CAP_PROP_FRAME_WIDTH, float( self.__resolution[ 0 ] ) )
+        self.__camera.set( cv2.CAP_PROP_FRAME_HEIGHT, float( self.__resolution[ 1 ] ) )
         self.__camera.set( cv2.CAP_PROP_FPS, self.__video_framerate )
         self.__camera.set( cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc( *'MJPG' ) )
         self.__camera.set( cv2.CAP_PROP_AUTOFOCUS, 1 if self.__camera_manual_focus_value == -1 else 0 )
@@ -95,7 +95,9 @@ class CameraInterface:
         Returns:
             The base64 encoded image string.
         """
-        return f'data:image/jepg;base64,{ b64encode( cv2.imencode( '.jpg', img )[1] ).decode( 'utf-8' ) }'
+
+        return f'data:image/jpeg;base64,{ b64encode( cv2.imencode( ".jpg", img )[1] ).decode( "utf-8" ) }'
+
     def start(self):
         """Starts the camera stream.
 

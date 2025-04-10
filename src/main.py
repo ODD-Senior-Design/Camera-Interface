@@ -7,7 +7,7 @@ from dotenv import load_dotenv
 from os import getenv, path
 from atexit import register as exit_handler
 from datetime import datetime
-from typing import Tuple, Dict
+from typing import Tuple, Dict, Optional
 
 from interface import CameraInterface, ButtonInterface
 
@@ -17,7 +17,7 @@ api_url = getenv( 'API_URL', 'http://localhost:5000' )
 datetime_format = getenv( 'DATETIME_FORMAT', '%Y-%m-%dT%H:%M:%S' )
 
 images_save_dir: str = getenv( 'IMAGES_SAVE_DIRECTORY', './captured_images' )
-camera_device: int = int( getenv( 'CAMERA_DEVICE', '0' ) )
+camera_device = getenv( 'CAMERA_DEVICE' ) or 0
 video_resolution: Tuple[ int, int ] = tuple( map( int, getenv( 'VIDEO_RESOLUTION', '640x480' ).split( 'x' ) ) )
 video_framerate: int = int( getenv( 'VIDEO_FRAMERATE', '30' ) )
 focus: int = int( getenv( "CAMERA_FOCUS_AMOUNT", '-1' ) )
@@ -34,8 +34,8 @@ bind_port: int = int( getenv( 'BIND_PORT', '3000' ) )
 stream_ws: SocketIO = SocketIO( webhook, cors_allowed_origins='*' )
 camera_live = Event()
 
-camera = CameraInterface( video_resolution, video_framerate, camera_device )
-button = ButtonInterface( left_button_pin, right_button_pin, debounce_time )
+camera: Optional[ CameraInterface ] = None
+button: Optional[ ButtonInterface ] = None
 
 
 def send_frames( live ) -> None:
@@ -64,6 +64,7 @@ def on_connect() -> None:
     Prints a message to the console indicating the connection. Starts the camera and begins sending frames.
     """
     print( 'Websocket client connected' )
+    assert camera is not None
     camera.start()
     camera_live.set()
     stream_ws.start_background_task( send_frames, camera_live )
@@ -90,6 +91,8 @@ def capture() -> Response:
     joined_ids = '_'.join( ids.values() )
     image_path = f"{ images_save_dir }/{ joined_ids }.jpg"
 
+    assert camera is not None
+
     if not camera.streaming:
         abort( 500, 'Camera is not available. Please check physical connection and if stream is running.' )
 
@@ -107,10 +110,10 @@ def on_exit() -> None:
     Stops the camera and button interfaces.
     """
     print( 'Closing camera and button interface if in use...' )
-    if camera.streaming:
+    if camera.streaming or camera is not None:
         camera_live.clear()
         camera.stop()
-    if button.in_use:
+    if button.in_use or button is not None:
         button.stop()
 
 def main() -> Flask:
@@ -119,18 +122,26 @@ def main() -> Flask:
     Loads environment variables, registers the exit handler, starts the button interface if available,
     and runs the Flask webhook and websocket.
     """
-    load_dotenv( './.env' )
+    global camera, button
+    if debug:
+        print( "[DEBUG] Entered main()" )
+
+    camera = CameraInterface( video_resolution, video_framerate, camera_device )
+    button = ButtonInterface( left_button_pin, right_button_pin, debounce_time )
+
+    load_dotenv()
     exit_handler( on_exit )
+
     if path.exists( '/sys/firmware/devicetree/base/model' ):
         print( 'Starting button interface...')
         button.start()
     print( f'Using camera: { camera_device }' )
     print( 'Starting webhook and websocket connection...')
-    if not debug:
-        return webhook
-    stream_ws.run( app=webhook, host=bind_address, port=bind_port, debug=debug )
+    return webhook
 
 if __name__ == '__main__':
     print( 'Running python file, debug flag is automatically set...' )
     debug=True
     main()
+
+app = main()
