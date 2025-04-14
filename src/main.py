@@ -39,7 +39,6 @@ camera_live = Event()
 camera: Optional[ CameraInterface ] = None
 button: Optional[ ButtonInterface ] = None
 
-
 def send_frames( live ) -> None:
     """Sends frames from the camera over the websocket.
 
@@ -66,7 +65,11 @@ def on_connect() -> None:
     Prints a message to the console indicating the connection. Starts the camera and begins sending frames.
     """
     print( 'Websocket client connected' )
-    assert camera is not None
+    try:
+        assert camera is not None
+    except AssertionError:
+        print( "Camera is not initialized. This shouldn't be possible...how did we get here?" )
+
     camera.start()
     camera_live.set()
     stream_ws.start_background_task( send_frames, camera_live )
@@ -93,7 +96,10 @@ def capture() -> Response:
     joined_ids = '_'.join( ids.values() )
     image_path = f"{ images_save_dir }/{ joined_ids }.jpg"
 
-    assert camera is not None
+    try:
+        assert camera is not None
+    except AssertionError:
+        abort( 500, "Camera is not initialized. This shouldn't be possible...how did we get here?" )
 
     if not camera.streaming:
         abort( 500, 'Camera is not available. Please check physical connection and if stream is running.' )
@@ -137,13 +143,19 @@ def main() -> Flask:
         button = ButtonInterface( dameon_addr, left_button_pin, right_button_pin, debounce_time )
         print( 'Starting button interface...')
         button.start()
+
     print( f'Using camera: { camera_device }' )
     print( 'Starting webhook and websocket connection...')
+
+    if debug:
+        stream_ws.run( app=webhook, host=bind_address, port=bind_port )
+
     return webhook
 
+# If you run the python file by itself, without a WSGI Server
 if __name__ == '__main__':
     print( 'Running python file, debug flag is automatically set...' )
-    debug=True
+    debug = True
     main()
 
-app = main()
+app = main() #* Gunicorn (Production WSGI Server) won't run `main()` unless it's defined to a variable

@@ -39,7 +39,7 @@ class CameraInterface:
         self.__camera.set( cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc( *'MJPG' ) )
         self.__camera.set( cv2.CAP_PROP_AUTOFOCUS, 1 if self.__camera_manual_focus_value == -1 else 0 )
         if self.__camera_manual_focus_value != -1:
-            self.__camera.set( cv2.CAP_PROP_FOCUS, camera_manual_focus_value )
+            self.__camera.set( cv2.CAP_PROP_FOCUS, self.__camera_manual_focus_value )
         self.__camera.set( cv2.CAP_PROP_AUTO_EXPOSURE, 0.25 )
 
         self.streaming = False
@@ -58,13 +58,12 @@ class CameraInterface:
         """
         frame = self.get_last_frame()
         if frame is None:
-            print( 'Please start camera first' )
             return None, None
 
         Path( image_path ).parent.mkdir( parents=True, exist_ok=True )
         valid = cv2.imwrite( image_path, frame )
         if not valid:
-            print( f"Failed to save image at '{ image_path }'" )
+            print( f"Failed to save image at: '{ image_path }'" )
             return None, None
 
         return image_path, frame
@@ -72,15 +71,21 @@ class CameraInterface:
     def get_last_frame(self) -> Optional[ndarray]:
         """Retrieves the last frame captured by the camera.
 
-        Reads a frame from the camera and returns it as a NumPy array.
+        Reads a frame from the camera. If the camera stream is not active, or if reading fails,
+        it prints an error message and returns None.
 
         Returns:
-            The last captured frame as a NumPy array, or None if capturing failed.
+            The last captured frame as a NumPy array, or None if an error occurred.
         """
+        if not self.streaming:
+            print( 'Please start camera stream first' )
+            return None
+
         valid, frame = self.__camera.read()
         if not valid:
             print( 'Failed to capture image' )
             return None
+
         return frame
 
     def as_b64_str(self, img: ndarray) -> str:
@@ -104,7 +109,19 @@ class CameraInterface:
         Re-initializes the camera if it's not already opened and sets the streaming flag to True.
         """
         if not self.__camera.isOpened():
-            self.__init__( camera_device=self.__camera_device, resolution=self.__resolution, video_framerate=self.__video_framerate, camera_manual_focus_value=self.__camera_manual_focus_value )
+            self.__camera = cv2.VideoCapture( self.__camera_device )
+            if not self.__camera.isOpened():
+                raise ValueError( f"Failed to open camera '{ self.__camera_device }'" )
+
+            self.__camera.set( cv2.CAP_PROP_FRAME_WIDTH, float( self.__resolution[ 0 ] ) )
+            self.__camera.set( cv2.CAP_PROP_FRAME_HEIGHT, float( self.__resolution[ 1 ] ) )
+            self.__camera.set( cv2.CAP_PROP_FPS, self.__video_framerate )
+            self.__camera.set( cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc( *'MJPG' ) )
+            self.__camera.set( cv2.CAP_PROP_AUTOFOCUS, 1 if self.__camera_manual_focus_value == -1 else 0 )
+            if self.__camera_manual_focus_value != -1:
+                self.__camera.set( cv2.CAP_PROP_FOCUS, self.__camera_manual_focus_value )
+            self.__camera.set( cv2.CAP_PROP_AUTO_EXPOSURE, 0.25 )
+
         self.streaming = True
 
     def stop(self):
@@ -113,6 +130,7 @@ class CameraInterface:
         Releases the camera object to free up resources.
         """
         self.__camera.release()
+        self.streaming = False
 
 class ButtonInterface:
     """Interfaces with physical buttons for input events.
