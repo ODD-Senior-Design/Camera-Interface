@@ -1,3 +1,10 @@
+__pycache__/
+*.pyc
+.env
+.git/
+captured_images/
+*.log
+
 captured_images/*
 .history
 *.lock

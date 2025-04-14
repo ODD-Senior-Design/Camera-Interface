@@ -1,81 +1,161 @@
-import os
-import time
-import requests
-import pigpio
-import picamera2
-from interface import CameraInterface
-from interface import ButtonInterface
+from flask import Flask, Response, request, jsonify, abort
+from flask_cors import CORS
+from flask_socketio import SocketIO
+from threading import Event
 
-#gotta see if this is in main
-class Camera:
-    def __init__(self, button_pin, api_url, api_key = None):
-        self.camera = CameraInterface()
-        self.button = ButtonInterface(button_pin, self.capture_and_send)
-        self.api_url = API_URL
+from dotenv import load_dotenv
+from os import getenv, path
+from atexit import register as exit_handler
+from datetime import datetime
+from typing import Tuple, Dict, Optional
 
-    def capture_and_send(self):
-        image_path = self.camera.capture_image()
-        with open(image_path, "rb") as image_file:
-            files = {"file": image_file}
-            response = response.post(self.api_url, files = files)
+from interface import CameraInterface, ButtonInterface
 
-        if self.uploader.upload_image(image_path) == 3 : # gotta ask how many pictures its gonna take 
-            os.remove(image_path)
-            print(f"Delete '{image_path}' after successful upload.")
-        else: 
-            print(f"error, {response.text}")
+debug = getenv( 'DEBUG', '0' ) == '1'
 
-    def run(self):
-       # print("Press the button to capture and send an image. Press Ctrl+C to exit.") Still don't know what the use the buttons for 
-        try:
-            while True:
-                time.sleep(1)
-        except KeyboardInterrupt:
-            self.cleanup()
+api_url = getenv( 'API_URL', 'http://localhost:5000' )
+datetime_format = getenv( 'DATETIME_FORMAT', '%Y-%m-%dT%H:%M:%S' )
 
-    def cleanup(self):
-        print("Cleaning up")
-        self.camera.close()
-        self.button.close()
+images_save_dir: str = getenv( 'IMAGES_SAVE_DIRECTORY', './captured_images' )
+camera_device = getenv( 'CAMERA_DEVICE' ) or 0
+video_resolution: Tuple[ int, int ] = tuple( map( int, getenv( 'VIDEO_RESOLUTION', '640x480' ).split( 'x' ) ) )
+video_framerate: int = int( getenv( 'VIDEO_FRAMERATE', '30' ) )
+focus: int = int( getenv( "CAMERA_FOCUS_AMOUNT", '-1' ) )
 
-if __name__ == "__main__":
-    API_URL = "https://api.ranga-family.com"
-    BUTTON_PIN = 18  # Change GPIO pin if necessary
+disable_buttons: bool = getenv( 'DISABLE_BUTTONS', '0' ) == '1'
+dameon_addr = getenv( 'PIGPIOD_ADDRESS', '127.0.0.1:8888' )
+left_button_pin = int( getenv( 'LEFT_BUTTON_PIN', '18' ) )
+right_button_pin = int( getenv( 'RIGHT_BUTTON_PIN', '23' ) )
+debounce_time = float( getenv( 'DEBOUNCE_TIME', '0.2' ) )
 
-    app = Camera(BUTTON_PIN, API_URL) 
-    app.run()
+webhook: Flask = Flask( getenv( 'WEBHOOK_NAME', 'Interface Webhook' ) )
+CORS( webhook, origins='*' )
+bind_address: str = getenv( 'BIND_ADDRESS', '0.0.0.0' )
+bind_port: int = int( getenv( 'BIND_PORT', '3000' ) )
 
-# Setup GPIO
-pigpio.setmode(pigpio.BCM)
-pigpio.setup(BUTTON_PIN, pigpio.IN, pull_up_down = pigpio.PUD_UP)
+stream_ws: SocketIO = SocketIO( webhook, cors_allowed_origins='*' )
+camera_live = Event()
 
-# Initialize PiCamera2
-camera = picamera2.PiCamera2()
-camera.resolution = (640, 480)
-camera.configure(camera.create_still_configuration())
-camera.start()
+camera: Optional[ CameraInterface ] = None
+button: Optional[ ButtonInterface ] = None
 
-API_URL = "https://api.ranga-family.com"
+def send_frames( live ) -> None:
+    """Sends frames from the camera over the websocket.
 
-def capture_and_send():
-    image_path = "/home/pi/captured_image.jpg"
-    camera.capture_file(image_path)
-    print(f"Image saved as '{image_path}'")
+    Continuously retrieves the last frame from the camera and emits it over the '/stream' namespace.
+    Prints frame timing information if debug mode is enabled.
+    """
+    last_frame = camera.get_last_frame()
+    last_frame_time = datetime.now()
+    while live.is_set():
+        if last_frame is None:
+            last_frame = camera.get_last_frame()
+        frame_payload = camera.as_b64_str( last_frame )
+        stream_ws.sleep(0)
+        stream_ws.emit( 'message', { "frame" : frame_payload }, namespace='/stream' )
+        last_frame = camera.get_last_frame()
+        current_frame_time = datetime.now()
+        if debug: print( f'Frame timing: { current_frame_time - last_frame_time }' )
+        last_frame_time = current_frame_time
 
-    # Send image to API
-    with open(image_path, "rb") as image_file:
-        files = {"file": image_file}
-        response = requests.post(API_URL, files=files)
+@stream_ws.on( 'connect', namespace='/stream' )
+def on_connect() -> None:
+    """Handles the connection of a websocket client.
 
-    print("API Response:", response.text)
+    Prints a message to the console indicating the connection. Starts the camera and begins sending frames.
+    """
+    print( 'Websocket client connected' )
+    try:
+        assert camera is not None
+    except AssertionError:
+        print( "Camera is not initialized. This shouldn't be possible...how did we get here?" )
 
-print("button to capture and send an image")
+    camera.start()
+    camera_live.set()
+    stream_ws.start_background_task( send_frames, camera_live )
 
-try:
-    while True:
-        if pigpio.input(BUTTON_PIN) == pigpio.LOW: 
-            capture_and_send()
-            time.sleep(0.5) 
-except KeyboardInterrupt:
-    pigpio.cleanup()
-    camera.close()
+@stream_ws.on( 'disconnect', namespace='/stream' )
+def on_disconnect() -> None:
+    """Handles the disconnection of a websocket client.
+
+    Prints a message to the console indicating the disconnection. Stops the camera.
+    """
+    print( 'Websocket client disconnected' )
+    camera_live.clear()
+    camera.stop()
+
+@webhook.route( '/capture', methods=[ 'POST' ] )
+def capture() -> Response:
+    """Captures an image from the camera and returns the image path and timestamp.
+
+    Expects a JSON payload with a dictionary of IDs. These IDs are used to construct the image filename.
+    Returns a JSON response containing the URI of the captured image and the timestamp.
+    """
+    ids: Dict[ str, str ] = request.get_json()
+    captured_time = datetime.now().strftime( datetime_format )
+    joined_ids = '_'.join( ids.values() )
+    image_path = f"{ images_save_dir }/{ joined_ids }.jpg"
+
+    try:
+        assert camera is not None
+    except AssertionError:
+        abort( 500, "Camera is not initialized. This shouldn't be possible...how did we get here?" )
+
+    if not camera.streaming:
+        abort( 500, 'Camera is not available. Please check physical connection and if stream is running.' )
+
+    image_path, last_frame = camera.capture_image( image_path )
+    if not image_path:
+        abort( 500, 'Failed to capture and save image.' )
+
+    absolute_image_path = path.abspath( image_path )
+
+    return jsonify( { "uri": f'file://{ absolute_image_path }',"image_b64": camera.as_b64_str( last_frame ), "image_timestamp": captured_time } )
+
+def on_exit() -> None:
+    """Cleanup function to be executed on exit.
+
+    Stops the camera and button interfaces.
+    """
+    print( 'Closing camera and button interface if in use...' )
+    if camera.streaming:
+        camera_live.clear()
+        camera.stop()
+    if button:
+        button.stop()
+
+def main() -> Flask:
+    """Main function to initialize and run the application.
+
+    Loads environment variables, registers the exit handler, starts the button interface if available,
+    and runs the Flask webhook and websocket.
+    """
+    global camera, button
+    if debug:
+        print( "[DEBUG] Entered main()" )
+
+    camera = CameraInterface( video_resolution, video_framerate, camera_device )
+
+    load_dotenv()
+    exit_handler( on_exit )
+
+    if path.exists( '/sys/firmware/devicetree/base/model' ) and not disable_buttons:
+        button = ButtonInterface( dameon_addr, left_button_pin, right_button_pin, debounce_time )
+        print( 'Starting button interface...')
+        button.start()
+
+    print( f'Using camera: { camera_device }' )
+    print( 'Starting webhook and websocket connection...')
+
+    if debug:
+        stream_ws.run( app=webhook, host=bind_address, port=bind_port )
+
+    return webhook
+
+# If you run the python file by itself, without a WSGI Server
+if __name__ == '__main__':
+    print( 'Running python file, debug flag is automatically set...' )
+    debug = True
+    main()
+
+app = main() #* Gunicorn (Production WSGI Server) won't run `main()` unless it's defined to a variable
