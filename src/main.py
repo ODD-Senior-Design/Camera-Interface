@@ -22,6 +22,8 @@ video_resolution: Tuple[ int, int ] = tuple( map( int, getenv( 'VIDEO_RESOLUTION
 video_framerate: int = int( getenv( 'VIDEO_FRAMERATE', '30' ) )
 focus: int = int( getenv( "CAMERA_FOCUS_AMOUNT", '-1' ) )
 
+disable_buttons: bool = getenv( 'DISABLE_BUTTONS', '0' ) == '1'
+dameon_addr = getenv( 'PIGPIOD_ADDRESS', '127.0.0.1:8888' )
 left_button_pin = int( getenv( 'LEFT_BUTTON_PIN', '18' ) )
 right_button_pin = int( getenv( 'RIGHT_BUTTON_PIN', '23' ) )
 debounce_time = float( getenv( 'DEBOUNCE_TIME', '0.2' ) )
@@ -110,10 +112,10 @@ def on_exit() -> None:
     Stops the camera and button interfaces.
     """
     print( 'Closing camera and button interface if in use...' )
-    if camera.streaming or camera is not None:
+    if camera.streaming:
         camera_live.clear()
         camera.stop()
-    if button.in_use or button is not None:
+    if button:
         button.stop()
 
 def main() -> Flask:
@@ -127,12 +129,12 @@ def main() -> Flask:
         print( "[DEBUG] Entered main()" )
 
     camera = CameraInterface( video_resolution, video_framerate, camera_device )
-    button = ButtonInterface( left_button_pin, right_button_pin, debounce_time )
 
     load_dotenv()
     exit_handler( on_exit )
 
-    if path.exists( '/sys/firmware/devicetree/base/model' ):
+    if path.exists( '/sys/firmware/devicetree/base/model' ) and not disable_buttons:
+        button = ButtonInterface( dameon_addr, left_button_pin, right_button_pin, debounce_time )
         print( 'Starting button interface...')
         button.start()
     print( f'Using camera: { camera_device }' )

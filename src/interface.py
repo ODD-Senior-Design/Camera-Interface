@@ -120,7 +120,7 @@ class ButtonInterface:
     Handles button press detection and debouncing using the pigpio library.
     Provides methods to start and stop listening for button presses on specified pins.
     """
-    def __init__(self, left_button_pin, right_button_pin, debounce_time=0.2):
+    def __init__(self, dameon_addr, left_button_pin, right_button_pin, debounce_time=0.2):
         """Initializes the button interface with specified pins and debounce time.
 
         Args:
@@ -128,7 +128,11 @@ class ButtonInterface:
             right_button_pin: The GPIO pin for the right button.
             debounce_time: The debounce time in seconds. Defaults to 0.2.
         """
-        self.__pi = pigpio.pi()
+        self.__dameon_addr = dameon_addr
+        self.__pi = pigpio.pi( self.__dameon_addr )
+        if not self.__pi.connected:
+            raise RuntimeError( f"Could not connect to pigpiod with address: '{ self.__dameon_addr }'" )
+
         self.__left_button_pin = left_button_pin
         self.__right_button_pin = right_button_pin
         self.__debounce_time = debounce_time
